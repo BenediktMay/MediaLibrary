@@ -136,6 +136,43 @@ header h1 {
     box-shadow: 0 10px 30px rgba(255, 140, 66, 0.2);
 }
 
+.media-card.completed {
+    opacity: 0.7;
+}
+
+.media-card-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.media-card:hover .media-card-overlay {
+    opacity: 1;
+}
+
+.watch-button {
+    padding: 10px 16px;
+    background: var(--primary-orange);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.watch-button:hover {
+    background: var(--dark-orange);
+}
+
 .media-card-thumbnail {
     width: 100%;
     height: 160px;
@@ -259,7 +296,7 @@ header h1 {
     align-items: center;
     margin-bottom: 15px;
     cursor: pointer;
-    padding: 5px;
+    padding: 12px 10px;
     border-radius: 6px;
     transition: background 0.2s ease;
 }
@@ -272,11 +309,18 @@ header h1 {
     font-size: 1.2rem;
     font-weight: 600;
     color: var(--primary-orange);
+    margin-bottom: 5px;
+}
+
+.season-episodes {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
 }
 
 .season-toggle {
     color: var(--text-secondary);
     font-size: 1.2rem;
+    flex-shrink: 0;
 }
 
 .episodes-grid {
@@ -299,11 +343,43 @@ header h1 {
     transform: translateY(-2px);
 }
 
+.episode-card.completed {
+    opacity: 0.6;
+}
+
+.episode-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
 .episode-number {
     font-size: 0.9rem;
     color: var(--primary-orange);
     font-weight: 600;
-    margin-bottom: 5px;
+}
+
+.watch-toggle {
+    background: none;
+    border: 2px solid var(--primary-orange);
+    color: var(--primary-orange);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    font-weight: bold;
+    transition: all 0.2s ease;
+    padding: 0;
+}
+
+.watch-toggle:hover {
+    background: var(--primary-orange);
+    color: var(--text-primary);
 }
 
 .episode-name {

@@ -15,13 +15,33 @@ CORS(app)
 # Configuration
 MEDIA_FOLDER = Path(__file__).parent.parent  # Parent folder of this repo
 PROGRESS_FILE = Path(__file__).parent / 'progress.json'
+COVERS_CACHE_FILE = Path(__file__).parent / 'covers_cache.json'
 VLC_PATH = r"C:\Program Files\VideoLAN\VLC\vlc.exe"
 VLC_HTTP_PORT = 8080
 VLC_HTTP_PASSWORD = "medialibrary"
 
+# Cover image API (optional - only uses if available)
+TMDB_API_KEY = None  # Set your TMDB API key here if you want to auto-fetch covers
+IMDB_API_URL = "https://www.imdb.com"
+
 # Supported video formats
 VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', 
                    '.m4v', '.mpg', '.mpeg', '.3gp', '.m2ts', '.ts', '.vob'}
+
+def load_covers_cache():
+    """Load cover URLs cache"""
+    if COVERS_CACHE_FILE.exists():
+        try:
+            with open(COVERS_CACHE_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_covers_cache(cache):
+    """Save cover URLs cache"""
+    with open(COVERS_CACHE_FILE, 'w', encoding='utf-8') as f:
+        json.dump(cache, f, indent=2)
 
 def load_progress():
     """Load watch progress from JSON file"""
@@ -42,6 +62,49 @@ def get_video_duration_vlc(video_path):
     """Get video duration using VLC (approximate)"""
     # For now, return None. We'll track duration when playing
     return None
+
+def clean_series_name(series_name):
+    """Clean up series name by removing download quality info"""
+    # First, remove tracker tags and specific markers
+    series_name = re.sub(r'\[eztv\.re\]|\[TGx\]|\[Silence\]|\[Ghost\]|\[EZTVx\.to\]|\[MeGusta\]', '', series_name, flags=re.IGNORECASE)
+    series_name = re.sub(r'\(eztv\.re\)|\(TGx\)|\(Silence\)|\(Ghost\)|\(EZTVx\.to\)|\(MeGusta\)', '', series_name, flags=re.IGNORECASE)
+    
+    # Remove season references like S01, S01-S06, COMPLETE
+    series_name = re.sub(r'S0?\d+(?:-S0?\d+)?', '', series_name, flags=re.IGNORECASE)
+    series_name = re.sub(r'Season\s+[0-9\-]+', '', series_name, flags=re.IGNORECASE)
+    series_name = re.sub(r'\bCOMPLETE\b', '', series_name, flags=re.IGNORECASE)
+    
+    # Remove quality/format info (720p, 1080p, x264, x265, etc)
+    series_name = re.sub(r'\d+p\b', '', series_name)
+    series_name = re.sub(r'\b(?:WEBRip|BluRay|HDTV|DVDRip|BRRip|WEB-DL)\b', '', series_name, flags=re.IGNORECASE)
+    series_name = re.sub(r'\bx26[45]\b', '', series_name)
+    series_name = re.sub(r'\b(?:HEVC|H\.264|MPEG2|H 264)\b', '', series_name)
+    series_name = re.sub(r'\b(?:AAC|EAC3|DTS|FLAC|MP3|DDP5)\b', '', series_name)
+    series_name = re.sub(r'\b\d+bit\b', '', series_name)
+    
+    # Remove provider names
+    series_name = re.sub(r'\b(?:NF|Netflix|AMZN|Amazon|Mixed)\b', '', series_name, flags=re.IGNORECASE)
+    
+    # Remove parenthetical content except for years like (2020)
+    # Keep parentheses with 4-digit years, remove others
+    series_name = re.sub(r'\([^)]*[a-zA-Z][^)]*\)', '', series_name)
+    
+    # Clean up dots, dashes, and extra spaces
+    series_name = series_name.replace('.', ' ')
+    series_name = re.sub(r'\s+', ' ', series_name)
+    series_name = series_name.strip()
+    series_name = re.sub(r'^[-\s]+|[-\s]+$', '', series_name)
+    
+    # Remove trailing "-AGLET" and similar tracker suffixes  
+    series_name = re.sub(r'\s*-\s*(?:[A-Z]+|[a-z]+)$', '', series_name)
+    
+    # Remove trailing standalone numbers (leftover from format strings like "DDP5.1")
+    series_name = re.sub(r'\s+\d+$', '', series_name)
+    
+    # Final cleanup
+    series_name = re.sub(r'\s+', ' ', series_name).strip()
+    
+    return series_name
 
 def parse_episode_info(filename, parent_folder):
     """Extract episode and season info from filename or folder structure"""
@@ -100,11 +163,18 @@ def scan_media_library():
     # Skip the MediaLibrary folder itself
     repo_folder = Path(__file__).parent
     
+    # Folders to completely skip
+    skip_folders = {'BOOKS', 'WATCHED', 'Featurettes', 'EXTRAS', 'Documentaries', 'Specials'}
+    
     for root, dirs, files in os.walk(MEDIA_FOLDER):
         root_path = Path(root)
         
         # Skip the repo folder
         if root_path == repo_folder or repo_folder in root_path.parents:
+            continue
+        
+        # Skip specific folders
+        if any(skip in root_path.name for skip in skip_folders):
             continue
         
         for file in files:
@@ -146,17 +216,38 @@ def scan_media_library():
             # Determine if this is part of a series or a standalone movie
             if season is not None and episode is not None:
                 # This is a series episode
-                # Try to determine series name from folder structure
+                # Find the top-level series folder
                 series_name = None
-                for parent in rel_path.parents:
-                    parent_str = str(parent)
-                    # Skip season folders
-                    if not re.search(r'season[\s_-]*\d+', parent_str.lower()) and parent_str != '.':
-                        series_name = parent_str
-                        break
+                rel_parts = rel_path.parts[:-1]  # Exclude the filename
+                
+                # If file is in a Season subfolder, use the parent folder as series name
+                if rel_parts:
+                    # Check if the immediate parent is a season folder
+                    if rel_parts[-1] and re.search(r'season[\s_-]*\d+', rel_parts[-1].lower()):
+                        # Go up two levels for the series name
+                        if len(rel_parts) >= 2:
+                            series_name = rel_parts[-2]
+                        else:
+                            series_name = rel_parts[-1]
+                    else:
+                        # Use the first (top-level) folder as series name
+                        series_name = rel_parts[0] if rel_parts else root_path.name
+                else:
+                    # File is directly in parent folder - extract series name from filename
+                    # Remove "WATCHED" prefix and extract series name before season info
+                    filename_clean = file_path.stem
+                    filename_clean = re.sub(r'^WATCHED\s+', '', filename_clean, flags=re.IGNORECASE)
+                    # Extract everything before the season/episode info
+                    series_name = re.sub(r'\s*[Ss]0?\d+[Ee]0?\d+.*$', '', filename_clean).strip()
                 
                 if not series_name:
                     series_name = root_path.name
+                
+                # Clean up series name
+                series_name = clean_series_name(series_name)
+                
+                if not series_name or series_name.lower() in ('torrent', 'medialibrary'):
+                    continue
                 
                 if series_name not in series:
                     series[series_name] = {}
@@ -168,7 +259,10 @@ def scan_media_library():
                 file_info['episode'] = episode
                 series[series_name][season].append(file_info)
             else:
-                # This is a standalone movie
+                # This is a standalone movie - skip featurettes/extras
+                if any(skip.lower() in file_path_str.lower() for skip in skip_folders):
+                    continue
+                
                 movies.append(file_info)
     
     # Sort episodes within each season
@@ -188,8 +282,40 @@ def index():
 
 @app.route('/api/library')
 def get_library():
-    """Get the complete media library"""
+    """Get the complete media library with cover URLs"""
     library = scan_media_library()
+    covers_cache = load_covers_cache()
+    
+    # Add cover URLs to series
+    for series_name in library['series']:
+        cache_key = f"series:{series_name}"
+        if cache_key not in covers_cache:
+            # Try to fetch cover image
+            cover_url = search_cover_image(series_name, 'series')
+            if cover_url:
+                covers_cache[cache_key] = cover_url
+        
+        cover_url = covers_cache.get(cache_key)
+        
+        # Add cover URL to all episodes in this series
+        for season_episodes in library['series'][series_name].values():
+            for episode in season_episodes:
+                episode['cover_url'] = cover_url
+    
+    # Add cover URLs to movies
+    for movie in library['movies']:
+        cache_key = f"movie:{movie['name']}"
+        if cache_key not in covers_cache:
+            # Try to fetch cover image
+            cover_url = search_cover_image(movie['name'], 'movie')
+            if cover_url:
+                covers_cache[cache_key] = cover_url
+        
+        movie['cover_url'] = covers_cache.get(cache_key)
+    
+    # Save updated cache
+    save_covers_cache(covers_cache)
+    
     return jsonify(library)
 
 @app.route('/api/play', methods=['POST'])
@@ -315,6 +441,110 @@ def reset_progress():
         save_progress(progress_data)
     
     return jsonify({'success': True})
+
+@app.route('/api/cover', methods=['GET', 'POST'])
+def handle_cover():
+    """Get or set cover image for a title"""
+    if request.method == 'GET':
+        title = request.args.get('title')
+        media_type = request.args.get('type', 'movie')  # 'movie' or 'series'
+        
+        if not title:
+            return jsonify({'error': 'Title required'}), 400
+        
+        covers_cache = load_covers_cache()
+        cache_key = f"{media_type}:{title}"
+        
+        if cache_key in covers_cache:
+            return jsonify({'cover_url': covers_cache[cache_key]})
+        
+        # Try to find cover from TMDB or other sources
+        cover_url = search_cover_image(title, media_type)
+        
+        if cover_url:
+            covers_cache[cache_key] = cover_url
+            save_covers_cache(covers_cache)
+            return jsonify({'cover_url': cover_url})
+        
+        return jsonify({'cover_url': None})
+    
+    elif request.method == 'POST':
+        data = request.json
+        title = data.get('title')
+        media_type = data.get('type', 'movie')
+        cover_url = data.get('cover_url')
+        
+        if not title or not cover_url:
+            return jsonify({'error': 'Title and cover_url required'}), 400
+        
+        covers_cache = load_covers_cache()
+        cache_key = f"{media_type}:{title}"
+        covers_cache[cache_key] = cover_url
+        save_covers_cache(covers_cache)
+        
+        return jsonify({'success': True})
+
+def search_cover_image(title, media_type='movie'):
+    """Search for cover image from online sources"""
+    try:
+        # Clean up title for searching
+        search_title = re.sub(r'\s*\(.*?\)$', '', title).strip()
+        
+        if media_type == 'series':
+            # Try TVMaze API for TV series (no key required)
+            try:
+                url = "https://api.tvmaze.com/singlesearch/shows"
+                params = {'q': search_title}
+                response = requests.get(url, params=params, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('image') and data['image'].get('medium'):
+                        # Return the larger image size
+                        return data['image']['medium'].replace('http://', 'https://')
+            except Exception as e:
+                print(f"[COVER] TVMaze error: {e}")
+        else:
+            # Try OpenLibrary/Google Books for better coverage
+            try:
+                # Use a simple approach with DuckDuckGo zero-click info
+                # Or use Open Library API
+                url = "https://openlibrary.org/search.json"
+                params = {
+                    'title': search_title,
+                    'limit': 1
+                }
+                response = requests.get(url, params=params, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('docs') and data['docs'][0].get('cover_i'):
+                        cover_id = data['docs'][0]['cover_i']
+                        return f"https://covers.openlibrary.org/b/id/{cover_id}-M.jpg"
+            except Exception as e:
+                print(f"[COVER] Open Library error: {e}")
+        
+        # Try TMDB API if key is available
+        if TMDB_API_KEY:
+            try:
+                endpoint = f"https://api.themoviedb.org/3/search/{media_type}"
+                params = {
+                    'api_key': TMDB_API_KEY,
+                    'query': search_title
+                }
+                response = requests.get(endpoint, params=params, timeout=5)
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('results'):
+                        poster_path = data['results'][0].get('poster_path')
+                        if poster_path:
+                            return f"https://image.tmdb.org/t/p/w342{poster_path}"
+            except Exception as e:
+                print(f"[COVER] TMDB error: {e}")
+        
+        # No cover found
+        return None
+    except Exception as e:
+        print(f"[COVER] Error searching for cover: {e}")
+        return None
 
 if __name__ == '__main__':
     print(f"Media Library Server Starting...")

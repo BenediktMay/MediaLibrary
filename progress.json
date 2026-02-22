@@ -1,8 +1,8 @@
 {
   "C:\\Torrent\\Devs.S01.1080p.WEBRip.x265[eztv.re]\\Devs.S01E01.1080p.WEBRip.x265-RARBG[eztv.re].mp4": {
-    "position": 0,
-    "duration": 0,
-    "last_played": "2026-02-22T18:14:33.143148",
+    "position": 3600,
+    "duration": 3600,
+    "last_played": "2026-02-22T20:24:43.575814",
     "completed": true
   },
   "C:\\Torrent\\Devs.S01.1080p.WEBRip.x265[eztv.re]\\Devs.S01E02.1080p.WEBRip.x265-RARBG[eztv.re].mp4": {
@@ -12,15 +12,27 @@
     "completed": true
   },
   "C:\\Torrent\\Devs.S01.1080p.WEBRip.x265[eztv.re]\\Devs.S01E03.1080p.WEBRip.x265-RARBG[eztv.re].mp4": {
-    "position": 3423,
+    "position": 0,
     "duration": 3441,
-    "last_played": "2026-02-22T18:14:57.720108",
-    "completed": false
+    "last_played": "2026-02-22T20:18:18.145058",
+    "completed": true
   },
   "C:\\Torrent\\The Americans (2013) Season 1-6 S01-S06 (1080p Mixed x265 HEVC 10bit EAC3 5.1 Silence)\\Featurettes\\Season 1\\Gag Reel.mkv": {
     "position": 4,
     "duration": 217,
     "last_played": "2026-02-22T18:15:17.749518",
+    "completed": false
+  },
+  "C:\\Torrent\\Devs.S01.1080p.WEBRip.x265[eztv.re]\\Devs.S01E04.1080p.WEBRip.x265-RARBG[eztv.re].mp4": {
+    "position": 0,
+    "duration": 0,
+    "last_played": "2026-02-22T20:18:23.149528",
+    "completed": true
+  },
+  "C:\\Torrent\\Devs.S01.1080p.WEBRip.x265[eztv.re]\\Devs.S01E05.1080p.WEBRip.x265-RARBG[eztv.re].mp4": {
+    "position": 2,
+    "duration": 2895,
+    "last_played": "2026-02-22T20:18:28.483379",
     "completed": false
   }
 }

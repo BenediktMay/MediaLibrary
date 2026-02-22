@@ -36,6 +36,22 @@ function setupEventListeners() {
     });
 }
 
+// Setup watch button listeners using event delegation
+function setupWatchButtonListeners() {
+    document.addEventListener('click', (event) => {
+        // Check if clicked element is a watch button
+        const watchButton = event.target.closest('[data-path][class*="watch-"]');
+        if (watchButton) {
+            const path = watchButton.getAttribute('data-path');
+            if (path) {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleWatched(path);
+            }
+        }
+    }, true); // Use capture phase to intercept clicks
+}
+
 // Load the media library
 async function loadLibrary() {
     try {
@@ -44,6 +60,9 @@ async function loadLibrary() {
         
         renderLibrary();
         updateStats();
+        
+        // Setup watch button listeners after rendering
+        setupWatchButtonListeners();
     } catch (error) {
         console.error('Error loading library:', error);
         showError('Failed to load media library');
@@ -139,11 +158,17 @@ function renderMovies() {
 function createMediaCard(item) {
     const progressPercent = item.progress_percent || 0;
     const hasProgress = progressPercent > 0;
+    const completed = item.completed ? ' completed' : '';
     
     return `
-        <div class="media-card" data-path="${escapeHtml(item.path)}" onclick="playMediaFromCard(this)" oncontextmenu="showContextMenuFromCard(event, this)">
-            <div class="media-card-thumbnail">
-                ${item.type === 'episode' ? '📺' : '🎬'}
+        <div class="media-card ${completed}" data-path="${escapeHtml(item.path)}" onclick="playMediaFromCard(this)" oncontextmenu="showContextMenuFromCard(event, this)">
+            <div class="media-card-thumbnail" style="background-image: url('${item.cover_url || ''}'); background-size: cover; background-position: center;">
+                ${item.cover_url ? '' : (item.type === 'episode' ? '📺' : '🎬')}
+                <div class="media-card-overlay">
+                    <button class="watch-button" type="button" data-path="${escapeHtml(item.path)}">
+                        ${completed ? '✓ Watched' : 'Mark Watched'}
+                    </button>
+                </div>
             </div>
             <div class="media-card-content">
                 <div class="media-card-title">${escapeHtml(item.displayName || item.name)}</div>
@@ -184,11 +209,15 @@ function createSeriesCard(seriesName, seasons) {
 // Create a season card
 function createSeasonCard(seriesName, seasonNum, episodes) {
     const seasonId = `season-${seriesName.replace(/\s/g, '-')}-${seasonNum}`;
+    const watchedCount = episodes.filter(ep => ep.completed).length;
     
     return `
         <div class="season-item">
             <div class="season-header" onclick="toggleSeason('${seasonId}')">
-                <div class="season-title">Season ${seasonNum}</div>
+                <div>
+                    <div class="season-title">Season ${seasonNum}</div>
+                    <div class="season-episodes">${watchedCount}/${episodes.length} Episodes Watched</div>
+                </div>
                 <div class="season-toggle" id="${seasonId}-toggle">▼</div>
             </div>
             <div class="episodes-grid" id="${seasonId}" style="display: grid;">
@@ -204,8 +233,13 @@ function createEpisodeCard(episode) {
     const hasProgress = progressPercent > 0;
     
     return `
-        <div class="episode-card" data-path="${escapeHtml(episode.path)}" onclick="playMediaFromCard(this)" oncontextmenu="showContextMenuFromCard(event, this)">
-            <div class="episode-number">Episode ${episode.episode}</div>
+        <div class="episode-card ${episode.completed ? 'completed' : ''}" data-path="${escapeHtml(episode.path)}" onclick="playMediaFromCard(this)" oncontextmenu="showContextMenuFromCard(event, this)">
+            <div class="episode-header">
+                <div class="episode-number">Episode ${episode.episode}</div>
+                <button class="watch-toggle" type="button" data-path="${escapeHtml(episode.path)}">
+                    ${episode.completed ? '✓' : '○'}
+                </button>
+            </div>
             <div class="episode-name">${escapeHtml(episode.name)}</div>
             <div class="episode-size">${formatFileSize(episode.size)}</div>
             ${hasProgress ? `
@@ -213,7 +247,6 @@ function createEpisodeCard(episode) {
                     <div class="progress-bar" style="width: ${progressPercent}%"></div>
                 </div>
             ` : ''}
-            ${episode.completed ? '<span class="badge badge-watched">✓</span>' : ''}
         </div>
     `;
 }
@@ -434,6 +467,45 @@ async function markAsWatched() {
     }
     
     document.getElementById('contextMenu').style.display = 'none';
+}
+
+// Toggle watched status
+async function toggleWatched(path) {
+    console.log('toggleWatched called with path:', path);
+    
+    const item = findItemByPath(path);
+    console.log('Found item:', item);
+    if (!item) {
+        console.log('Item not found!');
+        return;
+    }
+    
+    try {
+        const newCompleted = !item.completed;
+        const position = newCompleted ? (item.duration || 3600) : 0;
+        const duration = item.duration || 3600;
+        
+        console.log('Sending update:', { path, position, duration, completed: newCompleted });
+        
+        const response = await fetch(`${API_BASE}/progress`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                path: path, 
+                position: position, 
+                duration: duration, 
+                completed: newCompleted 
+            })
+        });
+        
+        console.log('Response status:', response.status);
+        
+        showNotification(newCompleted ? 'Marked as watched' : 'Marked as unwatched');
+        await loadLibrary();
+    } catch (error) {
+        console.error('Error toggling watched status:', error);
+        showError('Failed to update watch status');
+    }
 }
 
 // Close modal
