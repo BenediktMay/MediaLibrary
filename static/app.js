@@ -1,0 +1,465 @@
+// API Base URL
+const API_BASE = 'http://localhost:5000/api';
+
+// Global state
+let library = { series: {}, movies: [] };
+let currentlyPlaying = null;
+let vlcMonitorInterval = null;
+let contextMenuTarget = null;
+
+// Initialize the app
+document.addEventListener('DOMContentLoaded', () => {
+    loadLibrary();
+    setupEventListeners();
+    startVLCMonitor();
+});
+
+// Setup event listeners
+function setupEventListeners() {
+    document.getElementById('refreshBtn').addEventListener('click', loadLibrary);
+    
+    // Close modal when clicking outside
+    document.getElementById('episodeModal').addEventListener('click', (e) => {
+        if (e.target.id === 'episodeModal') {
+            closeModal();
+        }
+    });
+    
+    // Close context menu when clicking anywhere
+    document.addEventListener('click', () => {
+        document.getElementById('contextMenu').style.display = 'none';
+    });
+    
+    // Prevent context menu from closing when clicking inside it
+    document.getElementById('contextMenu').addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+}
+
+// Load the media library
+async function loadLibrary() {
+    try {
+        const response = await fetch(`${API_BASE}/library`);
+        library = await response.json();
+        
+        renderLibrary();
+        updateStats();
+    } catch (error) {
+        console.error('Error loading library:', error);
+        showError('Failed to load media library');
+    }
+}
+
+// Render the entire library
+function renderLibrary() {
+    renderContinueWatching();
+    renderSeries();
+    renderMovies();
+}
+
+// Render continue watching section
+function renderContinueWatching() {
+    const section = document.getElementById('continueWatchingSection');
+    const grid = document.getElementById('continueWatchingGrid');
+    
+    // Collect all items with progress
+    const inProgress = [];
+    
+    // Add series episodes
+    for (const [seriesName, seasons] of Object.entries(library.series)) {
+        for (const [seasonNum, episodes] of Object.entries(seasons)) {
+            for (const episode of episodes) {
+                if (episode.current_time > 0 && !episode.completed) {
+                    inProgress.push({
+                        ...episode,
+                        type: 'episode',
+                        seriesName,
+                        displayName: `${seriesName} - S${episode.season}E${episode.episode}`
+                    });
+                }
+            }
+        }
+    }
+    
+    // Add movies
+    for (const movie of library.movies) {
+        if (movie.current_time > 0 && !movie.completed) {
+            inProgress.push({
+                ...movie,
+                type: 'movie',
+                displayName: movie.name
+            });
+        }
+    }
+    
+    // Sort by last played
+    inProgress.sort((a, b) => {
+        if (!a.last_played) return 1;
+        if (!b.last_played) return -1;
+        return new Date(b.last_played) - new Date(a.last_played);
+    });
+    
+    if (inProgress.length === 0) {
+        section.style.display = 'none';
+        return;
+    }
+    
+    section.style.display = 'block';
+    grid.innerHTML = inProgress.slice(0, 6).map(item => createMediaCard(item)).join('');
+}
+
+// Render series
+function renderSeries() {
+    const container = document.getElementById('seriesContainer');
+    
+    if (Object.keys(library.series).length === 0) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📺</div><div class="empty-state-text">No TV series found</div></div>';
+        return;
+    }
+    
+    container.innerHTML = Object.entries(library.series)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([seriesName, seasons]) => createSeriesCard(seriesName, seasons))
+        .join('');
+}
+
+// Render movies
+function renderMovies() {
+    const grid = document.getElementById('moviesGrid');
+    
+    if (library.movies.length === 0) {
+        grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🎬</div><div class="empty-state-text">No movies found</div></div>';
+        return;
+    }
+    
+    grid.innerHTML = library.movies.map(movie => createMediaCard(movie)).join('');
+}
+
+// Create a media card
+function createMediaCard(item) {
+    const progressPercent = item.progress_percent || 0;
+    const hasProgress = progressPercent > 0;
+    
+    return `
+        <div class="media-card" onclick="playMedia('${escapeHtml(item.path)}')" oncontextmenu="showContextMenu(event, '${escapeHtml(item.path)}')">
+            <div class="media-card-thumbnail">
+                ${item.type === 'episode' ? '📺' : '🎬'}
+            </div>
+            <div class="media-card-content">
+                <div class="media-card-title">${escapeHtml(item.displayName || item.name)}</div>
+                <div class="media-card-info">${formatFileSize(item.size)}</div>
+                ${hasProgress ? `
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" style="width: ${progressPercent}%"></div>
+                    </div>
+                    <div class="progress-text">${Math.round(progressPercent)}% watched</div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+}
+
+// Create a series card
+function createSeriesCard(seriesName, seasons) {
+    const totalEpisodes = Object.values(seasons).reduce((sum, eps) => sum + eps.length, 0);
+    const watchedEpisodes = Object.values(seasons).reduce((sum, eps) => 
+        sum + eps.filter(ep => ep.completed).length, 0);
+    
+    return `
+        <div class="series-item">
+            <div class="series-header">
+                <div class="series-title">📺 ${escapeHtml(seriesName)}</div>
+                <div class="series-stats">${Object.keys(seasons).length} Season${Object.keys(seasons).length !== 1 ? 's' : ''} • ${totalEpisodes} Episodes • ${watchedEpisodes} Watched</div>
+            </div>
+            <div class="seasons-container">
+                ${Object.entries(seasons)
+                    .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                    .map(([seasonNum, episodes]) => createSeasonCard(seriesName, seasonNum, episodes))
+                    .join('')}
+            </div>
+        </div>
+    `;
+}
+
+// Create a season card
+function createSeasonCard(seriesName, seasonNum, episodes) {
+    const seasonId = `season-${seriesName.replace(/\s/g, '-')}-${seasonNum}`;
+    
+    return `
+        <div class="season-item">
+            <div class="season-header" onclick="toggleSeason('${seasonId}')">
+                <div class="season-title">Season ${seasonNum}</div>
+                <div class="season-toggle" id="${seasonId}-toggle">▼</div>
+            </div>
+            <div class="episodes-grid" id="${seasonId}" style="display: grid;">
+                ${episodes.map(episode => createEpisodeCard(episode)).join('')}
+            </div>
+        </div>
+    `;
+}
+
+// Create an episode card
+function createEpisodeCard(episode) {
+    const progressPercent = episode.progress_percent || 0;
+    const hasProgress = progressPercent > 0;
+    
+    return `
+        <div class="episode-card" onclick="playMedia('${escapeHtml(episode.path)}')" oncontextmenu="showContextMenu(event, '${escapeHtml(episode.path)}')">
+            <div class="episode-number">Episode ${episode.episode}</div>
+            <div class="episode-name">${escapeHtml(episode.name)}</div>
+            <div class="episode-size">${formatFileSize(episode.size)}</div>
+            ${hasProgress ? `
+                <div class="progress-bar-container" style="margin-top: 8px;">
+                    <div class="progress-bar" style="width: ${progressPercent}%"></div>
+                </div>
+            ` : ''}
+            ${episode.completed ? '<span class="badge badge-watched">✓</span>' : ''}
+        </div>
+    `;
+}
+
+// Toggle season visibility
+function toggleSeason(seasonId) {
+    const seasonEl = document.getElementById(seasonId);
+    const toggleEl = document.getElementById(`${seasonId}-toggle`);
+    
+    if (seasonEl.style.display === 'none') {
+        seasonEl.style.display = 'grid';
+        toggleEl.textContent = '▼';
+    } else {
+        seasonEl.style.display = 'none';
+        toggleEl.textContent = '▶';
+    }
+}
+
+// Play media
+async function playMedia(path) {
+    try {
+        // Get current progress
+        const item = findItemByPath(path);
+        const startTime = item ? item.current_time : 0;
+        
+        // Launch VLC
+        const response = await fetch(`${API_BASE}/play`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path, start_time: startTime })
+        });
+        
+        if (response.ok) {
+            currentlyPlaying = path;
+            showNotification(`Playing: ${getItemName(path)}`);
+        } else {
+            throw new Error('Failed to launch VLC');
+        }
+    } catch (error) {
+        console.error('Error playing media:', error);
+        showError('Failed to play media');
+    }
+}
+
+// Monitor VLC playback
+async function startVLCMonitor() {
+    vlcMonitorInterval = setInterval(async () => {
+        if (!currentlyPlaying) return;
+        
+        try {
+            const response = await fetch(`${API_BASE}/vlc/status`);
+            if (!response.ok) {
+                // VLC not running
+                return;
+            }
+            
+            const status = await response.json();
+            
+            if (status.state === 'playing' || status.state === 'paused') {
+                const position = status.time || 0;
+                const duration = status.length || 0;
+                
+                // Update progress every 10 seconds
+                if (position > 0 && duration > 0) {
+                    await updateProgress(currentlyPlaying, position, duration, false);
+                }
+            } else if (status.state === 'stopped') {
+                // Video ended
+                const item = findItemByPath(currentlyPlaying);
+                if (item) {
+                    // Mark as completed
+                    await updateProgress(currentlyPlaying, 0, item.duration || 0, true);
+                    
+                    // Check if this was an episode and play next
+                    if (item.season && item.episode) {
+                        await playNextEpisode(currentlyPlaying);
+                    }
+                }
+                
+                currentlyPlaying = null;
+            }
+        } catch (error) {
+            // VLC not responding, ignore
+        }
+    }, 5000); // Check every 5 seconds
+}
+
+// Update progress
+async function updateProgress(path, position, duration, completed) {
+    try {
+        await fetch(`${API_BASE}/progress`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path, position, duration, completed })
+        });
+        
+        // Refresh library to show updated progress
+        if (completed) {
+            await loadLibrary();
+        }
+    } catch (error) {
+        console.error('Error updating progress:', error);
+    }
+}
+
+// Play next episode
+async function playNextEpisode(currentPath) {
+    try {
+        const response = await fetch(`${API_BASE}/next-episode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: currentPath })
+        });
+        
+        if (response.ok) {
+            const nextEpisode = await response.json();
+            showNotification(`Auto-playing next episode: ${nextEpisode.name}`);
+            
+            // Wait a moment before playing
+            setTimeout(() => {
+                playMedia(nextEpisode.path);
+            }, 2000);
+        }
+    } catch (error) {
+        console.error('Error playing next episode:', error);
+    }
+}
+
+// Show context menu
+function showContextMenu(event, path) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const menu = document.getElementById('contextMenu');
+    contextMenuTarget = path;
+    
+    menu.style.display = 'block';
+    menu.style.left = `${event.pageX}px`;
+    menu.style.top = `${event.pageY}px`;
+}
+
+// Reset progress
+async function resetProgress() {
+    if (!contextMenuTarget) return;
+    
+    try {
+        await fetch(`${API_BASE}/reset-progress`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: contextMenuTarget })
+        });
+        
+        showNotification('Progress reset');
+        await loadLibrary();
+    } catch (error) {
+        console.error('Error resetting progress:', error);
+        showError('Failed to reset progress');
+    }
+    
+    document.getElementById('contextMenu').style.display = 'none';
+}
+
+// Mark as watched
+async function markAsWatched() {
+    if (!contextMenuTarget) return;
+    
+    const item = findItemByPath(contextMenuTarget);
+    const duration = item ? item.duration : 3600; // Default 1 hour
+    
+    try {
+        await fetch(`${API_BASE}/progress`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                path: contextMenuTarget, 
+                position: duration, 
+                duration: duration, 
+                completed: true 
+            })
+        });
+        
+        showNotification('Marked as watched');
+        await loadLibrary();
+    } catch (error) {
+        console.error('Error marking as watched:', error);
+        showError('Failed to mark as watched');
+    }
+    
+    document.getElementById('contextMenu').style.display = 'none';
+}
+
+// Close modal
+function closeModal() {
+    document.getElementById('episodeModal').classList.remove('active');
+}
+
+// Update stats
+function updateStats() {
+    const seriesCount = Object.keys(library.series).length;
+    const movieCount = library.movies.length;
+    const totalEpisodes = Object.values(library.series).reduce((sum, seasons) => 
+        sum + Object.values(seasons).reduce((s, eps) => s + eps.length, 0), 0);
+    
+    document.getElementById('statsText').textContent = 
+        `${seriesCount} Series • ${totalEpisodes} Episodes • ${movieCount} Movies`;
+}
+
+// Helper functions
+function findItemByPath(path) {
+    // Search in series
+    for (const seasons of Object.values(library.series)) {
+        for (const episodes of Object.values(seasons)) {
+            const episode = episodes.find(ep => ep.path === path);
+            if (episode) return episode;
+        }
+    }
+    
+    // Search in movies
+    return library.movies.find(movie => movie.path === path);
+}
+
+function getItemName(path) {
+    const item = findItemByPath(path);
+    return item ? (item.displayName || item.name) : 'Unknown';
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showNotification(message) {
+    // Simple notification - could be enhanced with a toast library
+    console.log('Notification:', message);
+}
+
+function showError(message) {
+    console.error('Error:', message);
+    alert(message);
+}
