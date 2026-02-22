@@ -141,7 +141,7 @@ function createMediaCard(item) {
     const hasProgress = progressPercent > 0;
     
     return `
-        <div class="media-card" onclick="playMedia('${escapeHtml(item.path)}')" oncontextmenu="showContextMenu(event, '${escapeHtml(item.path)}')">
+        <div class="media-card" data-path="${escapeHtml(item.path)}" onclick="playMediaFromCard(this)" oncontextmenu="showContextMenuFromCard(event, this)">
             <div class="media-card-thumbnail">
                 ${item.type === 'episode' ? '📺' : '🎬'}
             </div>
@@ -204,7 +204,7 @@ function createEpisodeCard(episode) {
     const hasProgress = progressPercent > 0;
     
     return `
-        <div class="episode-card" onclick="playMedia('${escapeHtml(episode.path)}')" oncontextmenu="showContextMenu(event, '${escapeHtml(episode.path)}')">
+        <div class="episode-card" data-path="${escapeHtml(episode.path)}" onclick="playMediaFromCard(this)" oncontextmenu="showContextMenuFromCard(event, this)">
             <div class="episode-number">Episode ${episode.episode}</div>
             <div class="episode-name">${escapeHtml(episode.name)}</div>
             <div class="episode-size">${formatFileSize(episode.size)}</div>
@@ -232,29 +232,60 @@ function toggleSeason(seasonId) {
     }
 }
 
+// Play media from card element
+function playMediaFromCard(element) {
+    const path = element.getAttribute('data-path');
+    if (path) {
+        playMedia(path);
+    }
+}
+
+// Show context menu from card element
+function showContextMenuFromCard(event, element) {
+    event.preventDefault();
+    event.stopPropagation();
+    const path = element.getAttribute('data-path');
+    if (path) {
+        showContextMenu(event, path);
+    }
+}
+
 // Play media
 async function playMedia(path) {
+    console.log('[PLAY] Attempting to play:', path);
+    
     try {
         // Get current progress
         const item = findItemByPath(path);
         const startTime = item ? item.current_time : 0;
         
+        console.log('[PLAY] Found item:', item ? item.name : 'Not found');
+        console.log('[PLAY] Start time:', startTime);
+        
         // Launch VLC
+        const requestBody = { path, start_time: startTime };
+        console.log('[PLAY] Sending request:', requestBody);
+        
         const response = await fetch(`${API_BASE}/play`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path, start_time: startTime })
+            body: JSON.stringify(requestBody)
         });
+        
+        console.log('[PLAY] Response status:', response.status);
         
         if (response.ok) {
             currentlyPlaying = path;
             showNotification(`Playing: ${getItemName(path)}`);
         } else {
-            throw new Error('Failed to launch VLC');
+            const errorData = await response.json().catch(() => ({}));
+            const errorMsg = errorData.error || `HTTP ${response.status}`;
+            console.error('[PLAY] Error response:', errorData);
+            throw new Error(errorMsg);
         }
     } catch (error) {
         console.error('Error playing media:', error);
-        showError('Failed to play media');
+        showError(`Failed to play media: ${error.message}`);
     }
 }
 
@@ -455,8 +486,16 @@ function escapeHtml(text) {
 }
 
 function showNotification(message) {
-    // Simple notification - could be enhanced with a toast library
     console.log('Notification:', message);
+    // Create a simple toast notification
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--primary-orange); color: white; padding: 15px 20px; border-radius: 8px; z-index: 10000; box-shadow: 0 5px 20px rgba(0,0,0,0.5); animation: slideIn 0.3s ease;';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
 }
 
 function showError(message) {

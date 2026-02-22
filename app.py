@@ -199,13 +199,26 @@ def play_video():
     video_path = data.get('path')
     start_time = data.get('start_time', 0)
     
-    if not video_path or not Path(video_path).exists():
-        return jsonify({'error': 'Video not found'}), 404
+    print(f"[PLAY] Received request to play: {video_path}")
+    print(f"[PLAY] Start time: {start_time}")
+    
+    if not video_path:
+        return jsonify({'error': 'No video path provided'}), 400
+    
+    video_file = Path(video_path)
+    if not video_file.exists():
+        print(f"[ERROR] Video not found at: {video_path}")
+        return jsonify({'error': f'Video not found: {video_path}'}), 404
+    
+    # Check VLC exists
+    if not Path(VLC_PATH).exists():
+        print(f"[ERROR] VLC not found at: {VLC_PATH}")
+        return jsonify({'error': f'VLC not found at {VLC_PATH}'}), 500
     
     # Build VLC command with HTTP interface
     cmd = [
         VLC_PATH,
-        video_path,
+        str(video_file),  # Ensure path is string
         f'--start-time={int(start_time)}',
         '--extraintf=http',
         f'--http-port={VLC_HTTP_PORT}',
@@ -213,10 +226,14 @@ def play_video():
         '--no-video-title-show'  # Don't show filename on video
     ]
     
+    print(f"[PLAY] Launching VLC with command: {' '.join(cmd)}")
+    
     try:
         subprocess.Popen(cmd)
+        print(f"[PLAY] VLC launched successfully")
         return jsonify({'success': True, 'message': 'VLC launched'})
     except Exception as e:
+        print(f"[ERROR] Failed to launch VLC: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/progress', methods=['POST'])
