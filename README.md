@@ -21,6 +21,8 @@ A beautiful, dark-themed media library manager that automatically organizes and 
 
 ## 🚀 Installation
 
+### Web Application (Original)
+
 1. **Install Python dependencies:**
    ```powershell
    pip install -r requirements.txt
@@ -28,6 +30,40 @@ A beautiful, dark-themed media library manager that automatically organizes and 
 
 2. **Verify VLC is installed:**
    Make sure VLC is installed at `C:\Program Files\VideoLAN\VLC\vlc.exe`
+
+### Desktop Application (New) - Recommended ⭐
+
+The new **Desktop Application** provides a seamless experience with an embedded VLC player, no external windows needed.
+
+**Why Desktop App?**
+- ✅ Embedded VLC player with native controls
+- ✅ Seamless navigation between library and player
+- ✅ Single integrated window
+- ✅ No need to switch between browser and VLC
+- ✅ Professional native application feel
+- ✅ Auto-play next episode built-in
+
+**Installation & Running:**
+
+**Windows (Recommended):**
+```powershell
+# Option 1: Use batch file (easiest)
+run_desktop.bat
+
+# Option 2: Use Python directly
+python run_desktop.py
+```
+
+**Other Platforms:**
+```bash
+python run_desktop.py
+```
+
+The desktop app will:
+1. Automatically install dependencies (if needed)
+2. Start the Flask backend server
+3. Launch the desktop application window
+4. Embed the library interface with integrated VLC player
 
 ## 📁 Folder Structure
 
@@ -60,6 +96,8 @@ c:\Torrent\
 
 ## 🎯 Usage
 
+### Web Application
+
 1. **Start the server:**
    ```powershell
    python app.py
@@ -73,6 +111,40 @@ c:\Torrent\
    - VLC will start at your last watched position
    - Progress is automatically saved
    - When an episode ends, the next one plays automatically
+
+### Desktop Application
+
+1. **Launch the application:**
+   ```powershell
+   # Windows - double-click or use command
+   run_desktop.bat
+   
+   # Or
+   python run_desktop.py
+   ```
+
+2. **First Load:**
+   - The app will start the Flask backend automatically
+   - Wait a moment for the Flask server to start
+   - The library will load automatically
+
+3. **Browse and Play:**
+   - Browse your library in the left/main pane
+   - Click on any video (movie or episode) to play
+   - The embedded VLC player opens automatically
+   - Click "← Back to Library" to return to browsing
+   - Progress is automatically saved
+
+4. **Player Controls:**
+   - **▶ Play / ⏸ Pause**: Toggle playback
+   - **⏹ Stop**: Stop the current video
+   - **← Back to Library**: Return to library view
+   - **🔊 Volume**: Adjust volume with slider
+   - **Time Display**: Shows current position / duration
+
+5. **Auto-Play Next Episode:**
+   - When an episode finishes, the next episode automatically plays
+   - No action needed, just keep watching!
 
 ## 🎮 Features Guide
 

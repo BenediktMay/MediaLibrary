@@ -2,7 +2,7 @@
   "C:\\Torrent\\Devs.S01.1080p.WEBRip.x265[eztv.re]\\Devs.S01E01.1080p.WEBRip.x265-RARBG[eztv.re].mp4": {
     "position": 3600,
     "duration": 3600,
-    "last_played": "2026-02-22T20:24:43.575814",
+    "last_played": "2026-02-22T20:31:27.107479",
     "completed": true
   },
   "C:\\Torrent\\Devs.S01.1080p.WEBRip.x265[eztv.re]\\Devs.S01E02.1080p.WEBRip.x265-RARBG[eztv.re].mp4": {
@@ -29,10 +29,34 @@
     "last_played": "2026-02-22T20:18:23.149528",
     "completed": true
   },
-  "C:\\Torrent\\Devs.S01.1080p.WEBRip.x265[eztv.re]\\Devs.S01E05.1080p.WEBRip.x265-RARBG[eztv.re].mp4": {
-    "position": 2,
-    "duration": 2895,
-    "last_played": "2026-02-22T20:18:28.483379",
+  "C:\\Torrent\\The Great (2020) Season 1 S01 (1080p BluRay x265 HEVC 10bit AAC 5.1 Silence)\\The Great (2020) - S01E06 - Parachute (1080p BluRay x265 Silence).mkv": {
+    "position": 0,
+    "duration": 0,
+    "last_played": "2026-02-22T20:36:32.182635",
+    "completed": true
+  },
+  "C:\\Torrent\\The Great (2020) Season 1 S01 (1080p BluRay x265 HEVC 10bit AAC 5.1 Silence)\\The Great (2020) - S01E07 - A Pox On Hope (1080p BluRay x265 Silence).mkv": {
+    "position": 783,
+    "duration": 3053,
+    "last_played": "2026-02-22T23:04:56.235563",
+    "completed": false
+  },
+  "C:\\Torrent\\The Great (2020) Season 1 S01 (1080p BluRay x265 HEVC 10bit AAC 5.1 Silence)\\The Great (2020) - S01E08 - Meatballs at the Dacha (1080p BluRay x265 Silence).mkv": {
+    "position": 0,
+    "duration": 3600,
+    "last_played": "2026-02-22T20:38:04.789081",
+    "completed": false
+  },
+  "C:\\Torrent\\The Great (2020) Season 1 S01 (1080p BluRay x265 HEVC 10bit AAC 5.1 Silence)\\The Great (2020) - S01E09 - Love Hurts (1080p BluRay x265 Silence).mkv": {
+    "position": 0,
+    "duration": 3600,
+    "last_played": "2026-02-22T20:37:58.554337",
+    "completed": false
+  },
+  "C:\\Torrent\\The Great (2020) Season 1 S01 (1080p BluRay x265 HEVC 10bit AAC 5.1 Silence)\\The Great (2020) - S01E10 - The Beaver's Nose (1080p BluRay x265 Silence).mkv": {
+    "position": 0,
+    "duration": 3600,
+    "last_played": "2026-02-22T20:37:59.257223",
     "completed": false
   }
 }

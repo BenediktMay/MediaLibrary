@@ -6,12 +6,24 @@ let library = { series: {}, movies: [] };
 let currentlyPlaying = null;
 let vlcMonitorInterval = null;
 let contextMenuTarget = null;
+let isDesktopApp = false;
+let desktopBridge = null;
 
 // Initialize the app
 document.addEventListener('DOMContentLoaded', () => {
-    loadLibrary();
-    setupEventListeners();
-    startVLCMonitor();
+    // Check if running as desktop app
+    document.addEventListener('desktopBridgeReady', () => {
+        isDesktopApp = true;
+        desktopBridge = window.desktopBridge;
+        console.log('Desktop bridge connected!');
+    });
+    
+    // Give the bridge a moment to initialize
+    setTimeout(() => {
+        loadLibrary();
+        setupEventListeners();
+        startVLCMonitor();
+    }, 100);
 });
 
 // Setup event listeners
@@ -72,8 +84,8 @@ async function loadLibrary() {
 // Render the entire library
 function renderLibrary() {
     renderContinueWatching();
-    renderSeries();
     renderMovies();
+    renderSeries();
 }
 
 // Render continue watching section
@@ -136,8 +148,36 @@ function renderSeries() {
         return;
     }
     
-    container.innerHTML = Object.entries(library.series)
-        .sort(([a], [b]) => a.localeCompare(b))
+    // Get entries and sort by last watched date (most recent first)
+    const seriesEntries = Object.entries(library.series);
+    seriesEntries.sort(([nameA, seasonsA], [nameB, seasonsB]) => {
+        // Find the latest last_played date in each series
+        const getLatestDate = (seasons) => {
+            let latestDate = null;
+            for (const episodes of Object.values(seasons)) {
+                for (const episode of episodes) {
+                    if (episode.last_played) {
+                        const episodeDate = new Date(episode.last_played);
+                        if (!latestDate || episodeDate > latestDate) {
+                            latestDate = episodeDate;
+                        }
+                    }
+                }
+            }
+            return latestDate;
+        };
+        
+        const dateA = getLatestDate(seasonsA);
+        const dateB = getLatestDate(seasonsB);
+        
+        // Most recent first (null dates go to bottom)
+        if (!dateA && !dateB) return nameA.localeCompare(nameB); // Alphabetical if both unwatched
+        if (!dateA) return 1; // Unwatched goes down
+        if (!dateB) return -1; // Unwatched goes down
+        return dateB - dateA; // Most recent first
+    });
+    
+    container.innerHTML = seriesEntries
         .map(([seriesName, seasons]) => createSeriesCard(seriesName, seasons))
         .join('');
 }
@@ -295,9 +335,19 @@ async function playMedia(path) {
         console.log('[PLAY] Found item:', item ? item.name : 'Not found');
         console.log('[PLAY] Start time:', startTime);
         
-        // Launch VLC
+        // If running as desktop app, use embedded player
+        if (isDesktopApp && desktopBridge) {
+            console.log('[PLAY] Using desktop player');
+            currentlyPlaying = path;
+            showNotification(`Playing: ${getItemName(path)}`);
+            // Call Python function to show player
+            desktopBridge.playMedia(path, startTime);
+            return;
+        }
+        
+        // Otherwise, launch external VLC
         const requestBody = { path, start_time: startTime };
-        console.log('[PLAY] Sending request:', requestBody);
+        console.log('[PLAY] Sending request to Flask:', requestBody);
         
         const response = await fetch(`${API_BASE}/play`, {
             method: 'POST',
@@ -324,6 +374,12 @@ async function playMedia(path) {
 
 // Monitor VLC playback
 async function startVLCMonitor() {
+    // Only monitor external VLC if not in desktop app mode
+    if (isDesktopApp) {
+        console.log('Desktop app mode: VLC monitoring disabled (handled by desktop player)');
+        return;
+    }
+    
     vlcMonitorInterval = setInterval(async () => {
         if (!currentlyPlaying) return;
         
@@ -340,12 +396,12 @@ async function startVLCMonitor() {
                 const position = status.time || 0;
                 const duration = status.length || 0;
                 
-                // Update progress every 10 seconds
+                // Update progress silently (don't reload library)
                 if (position > 0 && duration > 0) {
                     await updateProgress(currentlyPlaying, position, duration, false);
                 }
             } else if (status.state === 'stopped') {
-                // Video ended
+                // Video ended - only then reload library
                 const item = findItemByPath(currentlyPlaying);
                 if (item) {
                     // Mark as completed
@@ -362,7 +418,7 @@ async function startVLCMonitor() {
         } catch (error) {
             // VLC not responding, ignore
         }
-    }, 5000); // Check every 5 seconds
+    }, 30000); // Check every 30 seconds to reduce flashing
 }
 
 // Update progress
